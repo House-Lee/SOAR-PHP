@@ -1,0 +1,44 @@
+
+message Pluse {
+	required int32 timestamp = 1;
+}
+message ReqAuth {
+	required int32 timestamp = 1;
+	required string auth_key = 2;
+	required string sign = 3;
+}
+message AckCommon {
+	required int32 code = 1;
+	optional string msg = 2;
+}
+message Task_Desc {
+	required string task_id = 1;
+	required int32	retcode = 2;
+	required int32	result  = 3;
+	required string str_result = 4;
+	required string output = 5;
+}
+
+message ReqSetConfig {
+	required string key = 1;
+	required string value = 2;
+}
+
+message ReqGetConfig {
+	required string key = 1;
+}
+
+message ReqGetHistory {
+	required int32 start = 1;
+	optional int32 length = 2;
+}
+
+message HistoryItem {
+	required int32 timestamp = 1;
+	required string task_id = 2;
+	required string command = 3;
+}
+
+message HistoryList {
+	repeated HistoryItem history = 1;
+}

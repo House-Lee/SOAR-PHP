@@ -1,0 +1,20 @@
+message ReqExecuteTask {
+	optional string task_id = 1;
+	required string command = 2;
+}
+
+message ReqTaskCommon {
+	required string task_id = 1;
+}
+
+message AckTaskOutput {
+	required int32 req_result = 1;
+	required string output = 2;
+}
+
+message AckTaskResult {
+	required int32 req_result = 1;
+	required int32 task_result = 2;
+	required string task_str_result = 3;
+	required int32 ret_code = 4;
+}

@@ -1,0 +1,21 @@
+
+
+message VMDesc {
+	required string	domain = 1;
+	required int32	CPU	   = 2;
+	required int32	memory = 3;
+	required int32	disk   = 4;
+	optional string	ip	   = 5;
+}
+
+message VMBatch_pb {
+	required string ticket_id = 1;
+	repeated VMDesc	vms		  = 2;
+}
+
+message VMBatchResult_pb {
+	required string ticket_id = 1;
+	required int32	result	  = 2;//0-fail , 1-success
+	optional string	desc	  = 3;
+	repeated VMDesc vms		  = 4;
+}
