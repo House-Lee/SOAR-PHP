@@ -11,8 +11,8 @@ $CONF['cookie_db'] = array(
 $CONF['db'] = array(
                 'db_host' => 'localhost',
                 'db_database' => 'soar_sample',
-                'db_user' => 'root',
-                'db_pwd' => 'LSLLxd',
+                'db_user' => 'Default_User',
+                'db_pwd' => 'Default_Password',
                 'charset' => 'utf8',
                 'tablePrefix' => '',
 );

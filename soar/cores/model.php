@@ -36,7 +36,7 @@ abstract class Model {
 										'-='=>'-'
 											);///< 定义了当前在update中允许的操作符
 	private $data_buffer_;///<用来存放数据缓存，在update 或者 insert的时候系统自动优先在此读取数据,GetOne时数据会临时存放于此
-	private $need_auto_update;
+	protected $need_auto_update;
 	
 	/**
 	 * 默认Model的构造函数
@@ -593,10 +593,7 @@ abstract class Model {
 	public function __destruct() {
 	    //check if auto update is needed
 	    if ($this->need_auto_update) {
-	        if (isset($this->primary_key) &&
-	            is_array($this->fields) && 
-	            isset($this->fields[$this->primary_key])) {
-	            
+	        if ($this->get_key($this->primary_key)) {
 	            $this->Update();
 	        } else {
 	            $this->Insert();
