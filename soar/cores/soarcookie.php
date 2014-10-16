@@ -61,10 +61,21 @@ class SoarCookie {
 		    }
         }
     }
-    
+    /**
+     * @brief  Set a cookie in normal way. Notice: All the cookies has been set to httponly for safety reason
+     * @param string $name
+     * @param mixed $value
+     * @param number $expire
+     * @return void
+     */
     public static function NormalSet($name , $value , $expire = 86400) {
         setcookie($name , $value , time() + $expire , null , null , null , true);
     }
+    /**
+     * @brief Get a normal cookie, return null if the specific cookie not set.
+     * @param string $name
+     * @return string|NULL
+     */
     public static function NormalGet($name) {
         if (isset($_COOKIE[$name])) {
             return $_COOKIE[$name];
@@ -72,9 +83,21 @@ class SoarCookie {
             return null;
         }
     }
+    /**
+     * @brief Delete a normal cookie
+     * @param string $name
+     */
     public static function NormalDel($name) {
         setcookie($name , null , 0);
     }
+    /**
+     * @brief Set a cookie
+     * @param string $name           The name of the cookie
+     * @param mixed $value             The value of the cookie. It could be multiple types such as string, array or even object of a self-defined class.
+     * @param number $expire     
+     * @param bool $restful_return   If true, the cookie_key will automatically set in a restful return, otherwise just return the cookie_key
+     * @return boolean|Ambigous <boolean, string>
+     */
     public static function Set($name , $value , $expire = 86400 , $restful_return = false) {
         $name = trim($name);
         if ($name == "" || $expire <= 0) {
@@ -101,6 +124,11 @@ class SoarCookie {
         self::_save_cookie_($cookie_key);
         return $rtn;
     }
+    /**
+     * @brief Get a cookie
+     * @param string $name
+     * @return mixed
+     */
     public static function Get($name) {
         $name = trim($name);
         if ($name == "") {
@@ -125,6 +153,11 @@ class SoarCookie {
         }
         return self::$cookie_buffer_[$name][VALUE_IDX];
     }
+    /**
+     * @brief Delete a cookie
+     * @param string $name
+     * @return boolean
+     */
     public static function Delete($name) {
         $name = trim($name);
         if ($name == "") {
