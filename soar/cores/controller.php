@@ -114,7 +114,7 @@ class Controller {
 	 * @param 		string $param
 	 * @return		string
 	 */
-	public static function authorize(array $rights, $expire = 86400) {
+	public static function authorize(array $rights, $expire = 86400 , $restful_return = true) {
 	    //rights example: array('admin','ulevel1',...,'uleveln');
 		if (defined("CALL_FROM") && CALL_FROM == "command_line") {
 			return true;
@@ -141,7 +141,7 @@ class Controller {
 		//save auth on server
 		$client_id = HttpUtilities::getClientIP()."-".HttpUtilities::getClientAgent();
 		
-		$auth_key = md5($client_id.$crypt_text_ascii);
+		$auth_key = hash("sha256" , $client_id.$crypt_text_ascii);
 		
 		$cookie_db = SoarConfig::get('main.cookie_db');
 		$content = json_encode(array(
@@ -152,7 +152,7 @@ class Controller {
 		if (is_array($cookie_db) && isset($cookie_db['host']) && isset($cookie_db['port'])) {
 		    //if we got a redis instance to save cookies, use that instead
 		    try {
-		        $redis = new Redis($cookie_db['host'], $cookie_db['port']);
+		        $redis = new Redis($cookie_db['host'], $cookie_db['port'] , 1);
 		        $redis->Set("soarphp_authorization:".$auth_key, $content);
 		        $redis->Expire("soarphp_authorization:".$auth_key, $expire - time());
 		    } catch (Exception $e) {
@@ -168,9 +168,14 @@ class Controller {
 		    @fwrite($fp , $content);
 		    fclose($fp);
 		}
-		self::set_return('soarphp_authorization', $auth_key);
+		$rtn = true;
+		if ($restful_return) {
+		    self::set_return('soarphp_authorization', $auth_key);
+		} else {
+		    $rtn = array(true , $auth_key);
+		}
 		setcookie('soarphp_authorization' , $auth_key , $expire);
-		return true;
+		return $rtn;
 	}
 	public static function deauthorize() {
 	    $auth_key = self::GetRequest('soarphp_authorization');
@@ -186,7 +191,7 @@ class Controller {
 	    $cookie_db = SoarConfig::get('main.cookie_db');
 	    if (is_array($cookie_db) && isset($cookie_db['host']) && isset($cookie_db['port'])) {
 	        try {
-	            $redis = new Redis($cookie_db['host'], $cookie_db['port']);
+	            $redis = new Redis($cookie_db['host'], $cookie_db['port'] , 1);
 	            $redis->Del("soarphp_authorization:".$auth_key);
 	        } catch (Exception $e) {
 	            self::set_error("AUTH_COOKIE_DB_ERROR" , $e->getMessage());
@@ -214,7 +219,7 @@ class Controller {
 		$cookie_db = SoarConfig::get('main.cookie_db');
 		if (is_array($cookie_db) && isset($cookie_db['host']) && isset($cookie_db['port'])) {
 		    try {
-		        $redis = new Redis($cookie_db['host'], $cookie_db['port']);
+		        $redis = new Redis($cookie_db['host'], $cookie_db['port'] , 1);
 		        $auth_content = $redis->Get("soarphp_authorization:".$auth_key);
 		    } catch (Exception $e) {
 		        self::set_error("AUTH_COOKIE_DB_ERROR" , $e->getMessage());
