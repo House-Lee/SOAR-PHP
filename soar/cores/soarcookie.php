@@ -97,7 +97,7 @@ class SoarCookie {
         } else {
             $rtn = $cookie_key;
         }
-        setcookie("soarphp_cookie_access" , $cookie_key , self::$max_cookie_expiration_ , null , null , null , true);
+        setcookie("soarphp_cookie_access" , $cookie_key , time() + self::$max_cookie_expiration_ , null , null , null , true);
         self::_save_cookie_($cookie_key);
         return $rtn;
     }
