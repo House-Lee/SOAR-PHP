@@ -174,7 +174,7 @@ class Controller {
 		} else {
 		    $rtn = array(true , $auth_key);
 		}
-		setcookie('soarphp_authorization' , $auth_key , $expire);
+		setcookie('soarphp_authorization' , $auth_key , $expire , null , null , null , true);
 		return $rtn;
 	}
 	public static function deauthorize() {

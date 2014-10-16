@@ -46,4 +46,10 @@ class Site extends Controller {
         Controller::deauthorize();
         echo "OK";
     }
+    public function test() {
+        $udao = new UserDao();
+        $udao->GetOne(1);
+        $udao->set_name("exif");
+        $udao->set_gender(1);
+    }
 }

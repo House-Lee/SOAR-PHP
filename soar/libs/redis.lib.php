@@ -1,11 +1,10 @@
 <?php
-require_once "predis/lib/Predis/Autoloader.php";
+require_once dirname(__FILE__)."/predis/lib/Predis/Autoloader.php";
 Predis\Autoloader::register();
-
 class Redis {
 	private static $server_conf;
 	private $conn = null;
-	public function __construct($host , $port) {
+	public function __construct($host , $port , $db = 0) {
 		if (isset(self::$server_conf[$host.":".$port])) {
 			$this->conn = self::$server_conf[$host.":".$port];
 		} else {
@@ -16,6 +15,8 @@ class Redis {
 									'connection_timeout' => 1.5,
 									'throw_errors' => true
 										));
+			if ($db)
+			    $redis_conn->select($db);
 			self::$server_conf[$host.":".$port] = $redis_conn;
 			$this->conn = $redis_conn;			
 		}

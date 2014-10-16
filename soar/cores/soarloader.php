@@ -35,6 +35,7 @@ class SoarLoader {
 		spl_autoload_register(array($this , 'controller'));//controller的自动加载
 		spl_autoload_register(array($this , 'config'));//设定config的自动加载
 		spl_autoload_register(array($this , 'view'));//设定view的自动加载
+		spl_autoload_register(array($this , 'cookie'));//设定cookie的自动加载
 		spl_autoload_register(array($this , 'object'));//object的自动加载
 		spl_autoload_register(array($this , 'general'));//通用类型的自动加载
 	}
@@ -87,14 +88,27 @@ class SoarLoader {
 	 * @param string $class
 	 */
 	public function config( $class ) {
-		require_once 'soarconfig.php';
+	    if ($class == "SoarConfig") {
+		    require_once 'soarconfig.php';
+	    }
 	}
 	/**
 	 * 加载全局视图类SoarView
 	 * @param string $class
 	 */
 	public function view( $class ) {
-		require_once 'soarview.php';
+	    if ($class == "SoarView") {
+		    require_once 'soarview.php';
+	    }
+	}
+	/**
+	 * 加载全局Cookie类SoarCookie
+	 * $param string $class
+	 */
+	public function cookie( $class ) {
+	    if ($class == "SoarCookie") {
+	        require_once 'soarcookie.php';
+	    }
 	}
 	/**
 	 * 加载objects类，文件以".obj.php"结尾，存放于soar/objects/目录下
