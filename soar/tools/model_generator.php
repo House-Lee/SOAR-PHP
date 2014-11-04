@@ -6,8 +6,8 @@ define('MODEL_PATH' , ROOT_PATH."/soar/models/");
 $mysql_conf = array(
 				'db_host' => 'localhost',
                 'db_database' => 'soar_sample',
-                'db_user' => 'root',
-                'db_pwd' => 'LSLLxd',
+                'db_user' => 'Default_User',
+                'db_pwd' => 'Default_Password',
                 'charset' => 'utf8',
                 'tablePrefix' => '',
 				);
@@ -53,7 +53,7 @@ foreach($tables as $table) {
 		$modelname .= ucfirst($word);
 	}
 	$modelname .= "Dao";
-	$filename = strtolower($modelname).".model.php";
+	$filename = strtolower($table).".model.php";
 	$filecontent = "<?php\n";
 	$filecontent .= "class ".$modelname." extends Model {\n";
 	$filecontent .= "\tpublic \$table = \"".$table."\";\n";

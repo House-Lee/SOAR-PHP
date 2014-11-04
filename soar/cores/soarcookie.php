@@ -5,8 +5,6 @@
  * @author     House.Lee(house.lee@soarnix.com)
  * @date       2014-10-14
  */
-//TODO: when use SecureSet, try to retrieve current cookies first in order to prevent over write
-//      the previous buffers.
 
 define('VALUE_IDX' , 0);
 define('EXPIRE_IDX' , 1);

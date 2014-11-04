@@ -49,6 +49,7 @@ class SoarApp {
 		 * 比如实际的controller为class UserCenter，
 		 * 那么在调用的时候应当为user_center,且文件应当为user_center.controller.php
 		 */
+	    require_once 'cores/controller.php';
 		$tobeana = "";
 		define("CALL_FROM" , (php_sapi_name() == "cli")?"command_line":"web_server");
 		if (CALL_FROM == "web_server") {

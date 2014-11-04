@@ -1,4 +1,5 @@
 <?php
+error_reporting(E_ALL ^ E_DEPRECATED);
 class MySQL {
 	private $db_host;
 	private $db_user;
@@ -40,7 +41,7 @@ class MySQL {
 	public function connect() {
 		if (count(explode(':' , $this->db_host)) != 2)
 				$this->db_host .= ":3306";
-		if (!(self::$conn = mysql_connect($this->db_host , $this->db_user , $this->db_pwd))) {
+		if (!(self::$conn = @mysql_connect($this->db_host , $this->db_user , $this->db_pwd))) {
 			$err_msg = "Could Not Connect.";
 			if (self::$show_error) {
 				$err_msg .= "REASON:".mysql_error();
@@ -48,7 +49,7 @@ class MySQL {
 			}
 			throw new Exception($err_msg);
 		}
-		if (!mysql_select_db($this->db_database , self::$conn)) {
+		if (!@mysql_select_db($this->db_database , self::$conn)) {
 			$err_msg = "Could Not Open DataBase.";
 			if (self::$show_error) {
 				$err_msg .= "REASON:".mysql_error();
@@ -56,7 +57,7 @@ class MySQL {
 			}
 			throw new Exception($err_msg);
 		}
-		mysql_query('SET NAMES '.$this->charset , self::$conn);
+		@mysql_query('SET NAMES '.$this->charset , self::$conn);
 	}
 	public function start_transaction() {
 		$i = 0;
@@ -70,23 +71,23 @@ class MySQL {
 			throw new Exception("transaction failed");
 		}
 		self::$locking = true;
-		mysql_query("START TRANSACTION" , self::$conn);
+		@mysql_query("START TRANSACTION" , self::$conn);
 	}
 	public function commit() {
 		self::$locking = false;
-		mysql_query("COMMIT" , self::$conn);
+		@mysql_query("COMMIT" , self::$conn);
 	}
 	public function rollback() {
 		self::$locking = false;
-		mysql_query("ROLLBACK" , self::$conn);
+		@mysql_query("ROLLBACK" , self::$conn);
 	}
 	
 	public function query( $str ) {
 		$this->last_query_ = $str;
-		if(!($this->result_ = mysql_query($str , self::$conn))) {
+		if(!($this->result_ = @mysql_query($str , self::$conn))) {
 			$err_msg = "Query Error.";
 			if (self::$show_error) {
-				$err_msg .= "REASON:".mysql_error(self::$conn);
+				$err_msg .= "REASON:".@mysql_error(self::$conn);
 				echo $err_msg;
 			}
 			return false;

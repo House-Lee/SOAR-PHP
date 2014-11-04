@@ -32,7 +32,12 @@ class Site extends Controller {
         if (!$sample_obj->IsSuccess()) {
             $this->set_err_and_quit($sample_obj->GetErrorCode() , $sample_obj->GetErrorAdditionMsg());
         } else {
-            $this->set_rtn_and_quit('Message', $sample_obj->GetReturn());
+//             $this->set_rtn_and_quit('Message', $sample_obj->GetReturn());
+            $this->set_return('Message', $sample_obj->GetReturn());
+            $a = 1;
+            $b = 2;
+            $c = $a+$b;
+            $this->set_return('Result', $c);
         }
     }
     public function authdemo() {
@@ -51,5 +56,20 @@ class Site extends Controller {
         $udao->GetOne(1);
         $udao->set_name("exif");
         $udao->set_gender(1);
+    }
+    public function cset2() {
+        SoarCookie::Set("strcookie", "The quick brown fox jumps over the lazy dog" ,20 , true);
+    }
+    public function cget2() {
+        var_dump(SoarCookie::Get("strcookie"));
+    }
+    public function cset() {
+        SoarCookie::Set("just_test", array("formula" => "a+b" , "element" => array(1,2)) , 1000 , true);
+    }
+    public function cget() {
+        var_dump(SoarCookie::Get("just_test"));
+    }
+    public function cdel() {
+        SoarCookie::Delete("just_test");
     }
 }

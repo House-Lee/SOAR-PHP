@@ -4,8 +4,8 @@ $CONF = array();
 $CONF['timezone'] = 'Asia/Shanghai';
 
 $CONF['cookie_db'] = array(
-		"host" => "10.81.4.60",
-		"port" => "17016",
+// 		"host" => "10.81.4.60",
+// 		"port" => "17016",
 );
 $CONF['cookie_sign'] = "zvOZo}`6+z";
 
