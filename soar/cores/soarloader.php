@@ -1,26 +1,31 @@
 <?php
 /**
  * @file	soarloader.php
- * @brief	实现所有基本类型的动态加载
+ * @brief	Implementation of the class autoloader of SoarPHP
  * @author	House.Lee(house.lee@soarnix.com)
  * @date	2014-11-03
  */
 
 /**
- * class SoarLoader实现了对soar php中所有符合预置规格的类型的动态加载
+ * Many developers writing object-oriented applications create one PHP source file per class definition. 
+ * One of the biggest annoyances is having to write a long list of needed includes at the beginning of 
+ * each script (one for each class).
+ * class SoarLoader enable the feature that the developer can create a new object of any classes without 
+ * manually listing the long expatiatory includes.
  */
 
 class SoarLoader {
-    public static $loader;///< 用以保存SoarLoader实例的静态变量
+    public static $loader;///< the shared instance of SoarLoader
      
     private static $include_path_;
     private static $namespace_pattern_;
     private static $register_queue_;
 
     /**
-     * @brief		初始化SoarLoader实例
-     * @detailed	初始化SoarLoader实例，确保针对每次请求，一个soar php的app全局只有一个该实例，会被soar php自动调用
-     * @return		对象的全局实例
+     * @brief		Initialize the SoarLoader instance
+     * @detailed	Initialize the SoarLoader instance. It guarantee the that singleton pattern, which means for each request session,
+     *              there will be only one SoarLoader instance
+     * @return		Global SoarLoader instance
      */
     public static function init() {
         if(!self::$loader)
@@ -28,7 +33,12 @@ class SoarLoader {
         return self::$loader;
     }
     /**
-     * 构造函数，注册所有的类加载函数
+     * Constructor of SoarLoader
+     * Register the three Global Root Namespace of SoarPHP which represent the 3 basic hierarchy types.
+     * i.e.:
+     *  - SoarObj
+     *  - SoarLib
+     *  - SoarClass
      */
     public function __construct() {
         self::$include_path_ = dirname( dirname( __FILE__ ) );
@@ -48,7 +58,10 @@ class SoarLoader {
         );
         spl_autoload_register(array($this , 'autoload'));
     }
-     
+    /**
+     * Autoload functions of SoarPHP
+     * @param string $className
+     */ 
     public function autoload( $className ) {
         $namespace_parts = explode('\\', $className);
         if (count($namespace_parts) > 1 && isset(self::$namespace_pattern_[$namespace_parts[0]])) {
