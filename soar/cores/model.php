@@ -171,8 +171,9 @@ abstract class Model {
 		}
 	}
 	private function _restore_single_buffer_(array &$buffer) {
-		return true;
-		//入库时已经转义，该处取值时不再转义，故abandon掉下面代码
+	    //Test the code here
+// 		return true;
+// 		//入库时已经转义，该处取值时不再转义，故abandon掉下面代码
 		foreach($buffer as $key =>$value) {
 			$buffer[$key] = stripslashes($value);
 		}
@@ -479,18 +480,11 @@ abstract class Model {
 		        if (self::$auto_cache_config_->expire != -1) {
 		            self::$auto_cache_conn->Expire($cache_key, self::$auto_cache_config_->expire);
 		        }
-		        $rtn = json_decode($res , true);
-		        if (count($columns) > 0) {
-		            $real_rtn = array();
-		            foreach($columns as $col) {
-		                if (!isset($rtn[$col])) {
-		                    //Cache invalid
-		                    goto recache;
-		                }
-		                $real_rtn[$col] = $rtn[$col];
-		            }
-		            $rtn = $real_rtn;
+		        $rtn = $this->filter_row(json_decode($res , true) , $columns);
+		        if ($rtn == -1) {
+		            goto recache;
 		        }
+		        $this->_restore_single_buffer_($rtn);
 		        return $rtn;
 		    }
 		    recache:
@@ -519,26 +513,33 @@ abstract class Model {
 				if (isset($this->fields[$key]))
 					$rtn[$key] = $value;
 			}
-			$this->_restore_single_buffer_($rtn);
 			if (self::$auto_cache_config_->enabled && self::$auto_cache_conn) {
 			    
 			    self::$auto_cache_conn->Set($cache_key , json_encode($this->data_buffer_));
 			    if (self::$auto_cache_config_->expire != -1) {
 			        self::$auto_cache_conn->Expire($cache_key, self::$auto_cache_config_->expire);
 			    }
-			    if (count($columns) > 0) {
-			        $real_rtn = array();
-			        foreach ($columns as $col) {
-			            $real_rtn[$col] = $rtn[$col];
-			        }
-			        $rtn = $real_rtn;
-			    }
+			    $rtn = $this->filter_row($rtn, $columns);
 			}
+			$this->_restore_single_buffer_($rtn);
 		}
 		$this->mysql->free();
 		$this->data_buffer_ = $rtn;
 		$this->set($this->primary_key, $primary_id);
 		return $rtn;
+	}
+	
+	private function filter_row($src , array $cols) {
+	    if (!count($cols))
+	        return $src;
+	    $rtn = [];
+	    foreach($cols as $c) {
+	        if (!isset($src[$c])) {
+	            return -1;
+	        }
+	        $rtn[$c] = $src[$c];
+	    }
+	    return $rtn;
 	}
 	
 	/**
@@ -560,9 +561,32 @@ abstract class Model {
 		if (self::$auto_cache_config_->enabled && self::$auto_cache_conn) {
 		    //Try to retrieve from cache first.
 		    if ($cond_str !== false && self::$auto_cache_config_->cache_retrieve_result) {
-		        $cond_str = str_replace(" ", "^", $cond_str);
-		        $cache_key = $this->_gen_cache_id_($this->table, $cond_str);
+		        $tmp_cond_str = str_replace(" ", "^", $cond_str);
+		        $cache_key = $this->_gen_cache_id_($this->table, $tmp_cond_str);
+		        $id_list = self::$auto_cache_conn->Get($cache_key);
+		        if (!$id_list) {
+		            goto recache;
+		        }
+		        $id_list = explode(',', $id_list);
+		        $rtn = [];
+		        foreach($id_list as $id) {
+		            $item_key = $this->_gen_cache_id_($this->table, $id);
+		            $tmp = self::$auto_cache_conn->Get($item_key);
+		            if (!$tmp) {
+		                //cache no longer available
+		                goto recache;
+		            }
+		            $tmp = $this->filter_row(json_decode($tmp , true) , $columns);
+		            if ($tmp == -1) {
+		                //cache invalid
+		                goto recache;
+		            }
+		            $this->_restore_single_buffer_($tmp);
+		            $rtn[] = $tmp;
+		        }
+		        return $rtn;
 		    }
+		    recache:
 		    $query_str .= "*";
 		} else {
 		    if (is_array($columns) && count($columns) > 0) {
@@ -586,6 +610,7 @@ abstract class Model {
 				throw new Exception("start offset not int");
 			}
 			$query_str .= " LIMIT ".$start_offset.",".$rtn_duration;
+			($cond_str !== false) && ($cond_str .= " LIMIT ".$start_offset.",".$rtn_duration);//shall be removed when more powerful mechanism has been designed
 		}
 		$rtn = array();
 		if( ($res = $this->mysql->query($query_str)) ) {
@@ -595,12 +620,28 @@ abstract class Model {
 				return $rtn;
 			}
 			$upper = count($res_arr);
+			$id_list = [];
 			for ($i = 0; $i != $upper; ++$i) {
 				foreach($res_arr[$i] as $key => $value) {
 					if (isset($this->fields[$key]))
 						$rtn[$i][$key] = $value;
 				}
+				if (self::$auto_cache_config_->enabled && self::$auto_cache_conn) {
+				    $id_list[] = $res_arr[$i][$this->primary_key];
+				    $ckey = $this->_gen_cache_id_($this->table, $res_arr[$i][$this->primary_key]);
+				    self::$auto_cache_conn->Set($ckey, json_encode($rtn[$i]));
+				    if (self::$auto_cache_config_->expire != -1) {
+				        self::$auto_cache_conn->Expire($ckey, self::$auto_cache_config_->expire);
+				    }
+				}
+				$rtn[$i] = $this->filter_row($rtn[$i], $columns);
 				$this->_restore_single_buffer_($rtn[$i]);
+			}
+			if (self::$auto_cache_config_->enabled && self::$auto_cache_conn && self::$auto_cache_config_->cache_retrieve_result && $cond_str !== false) {
+			    $tmp_cond_str = str_replace(" ", "^", $cond_str);
+			    $ckey = $this->_gen_cache_id_($this->table, $tmp_cond_str);
+			    self::$auto_cache_conn->Set($ckey, join(',', $id_list));
+			    self::$auto_cache_conn->Expire($ckey, self::$auto_cache_config_->retr_res_expire);
 			}
 		}
 		$this->mysql->free();
@@ -650,6 +691,7 @@ abstract class Model {
 		$this->mysql->free();
 		return $rtn;
 	}
+	//TODO:实现Delete One & Delete的AutoCache
 	/**
 	 * 删除一条数据
 	 * @param string $primary_id	欲删除的主码
