@@ -38,6 +38,8 @@ class AutoLoad extends Controller {
             echo "Model: UserDao Insert Failed";
         }
         echo "\n";
+        $dao->GetOne($lastuid);
+        echo "Last Inserted:".$dao->name()."\n";
         
         $dao = new ClientsDao();
         $dao->set_name("TestClient");

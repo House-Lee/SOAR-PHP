@@ -1,6 +1,5 @@
 <?php
-require_once dirname(__FILE__)."/predis/lib/Predis/Autoloader.php";
-Predis\Autoloader::register();
+require_once "redis.helper.php";
 class Redis {
 	private static $server_conf;
 	private $conn = null;

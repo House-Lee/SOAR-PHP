@@ -1,5 +1,5 @@
 <?php
-class LooBar extends Object {
+class LooBar {
     public function doit() {
         self::SetReturn('msg', "Normal Lib LooBar Pass");
     }

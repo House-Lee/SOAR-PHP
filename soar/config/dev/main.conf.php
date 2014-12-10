@@ -12,8 +12,8 @@ $CONF['cookie_sign'] = "zvOZo}`6+z";
 $CONF['db'] = array(
                 'db_host' => 'localhost',
                 'db_database' => 'soar_sample',
-                'db_user' => 'Default_User',
-                'db_pwd' => 'Default_Password',
+                'db_user' => 'root',
+                'db_pwd' => 'LSLLxd',
                 'charset' => 'utf8',
                 'tablePrefix' => '',
 );

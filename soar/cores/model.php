@@ -1,16 +1,76 @@
 <?php
+use Predis\Connection\RedisCluster;
+
 /**
  * @file 	model.php
- * @brief	定义了SoarPHP中所有Model的基类
+ * @brief	Defines the Model class from which all the models inherit.
  * @author	House.Lee(house.lee@soarnix.com)
  * @date	2013-03-06
  */
 
+require_once dirname(dirname(__FILE__))."/libs/redis.helper.php";
+
+class AutoCacheConfig {
+    public $enabled;
+    public $host_list;
+    public $expire;
+    public $prefix;
+    public $cache_retrieve_result;
+    public $retr_res_expire;
+    public $cache_mode;
+    
+    public function __construct($cfg) {
+        $this->enabled = true;
+        if (!$cfg || !isset($cfg['host_list'])) {
+            //auto cache has been disabled
+            $this->enabled = false;
+            return;
+        }
+        $this->host_list = $cfg['host_list'];
+        $this->cache_mode = ClusterRedis::Mode_Cluster;
+        foreach ($this->host_list as $v) {
+            if (is_array($v) && isset($v[1]) && $v[1] == "master") {
+                $this->cache_mode = ClusterRedis::Mode_MasterSlave;
+            }
+        }
+        $this->expire = 86400;
+        if (isset($cfg['expire'])) {
+            if ($cfg['expire'] == "never"){
+                $this->expire = -1;
+            } else if (is_numeric($cfg['expire']) && $cfg['expire'] > 0) {
+                $this->expire = $cfg['expire'];
+            }
+        }
+        $this->prefix = "";
+        if (isset($cfg['prefix'])) {
+            $this->prefix = $cfg['prefix'];
+        }
+        if (defined('SOAR_DEBUG') && SOAR_DEBUG == 'DEBUG') {
+            $this->cache_retrieve_result = false;
+            $this->retr_res_expire = 0;//0s
+        } else {
+            $this->cache_retrieve_result = true;
+            $this->retr_res_expire = 30;//30s
+        }
+        
+    }
+}
 /**
  * CLASS Model. Class Model是所有Model的基类。封装了所有数据库操作的接口
  */
 abstract class Model {
 	private $mysql;///< 每个Model的mysql单独实例，以使得每个Model拥有独立的数据缓冲区，不至于多个Model之间出现数据共享冲突
+	private static $auto_cache_config_ = null;///< the config of auto cache
+	                                         /*
+	                                          * config example:
+	                                          * [
+	                                          * 'host_list' => ["10.1.0.1:17016" , ["10.1.0.2:17016", "alias"]],
+	                                          * 'expire' => 86400 or "never",
+	                                          * 'prefix' => 'proj_name'
+	                                          * ]
+	                                          */
+	private static $auto_cache_conn = null;
+	//TODO: implement auto cache
 	//TODO:增加insert和update时的类型检查
 	private static $default_value = array(
 										'int' => 0,
@@ -50,6 +110,42 @@ abstract class Model {
 		$config['charset'] = "utf8";//强制设定字符集为utf8，仅支持utf8字符集操作
 		$this->mysql = new MySQL($config);
 		$this->need_auto_update = false;
+		
+		//initialize auto cache configuration if needed
+		if (self::$auto_cache_conn) {
+		    //if successfully created the auto cache connection, quit the constructor directly.
+		    return;
+		}
+		$config = SoarConfig::get('main.auto_cache');
+		self::$auto_cache_config_ = new AutoCacheConfig($config);
+		if (!self::$auto_cache_config_->enabled) {
+		    return;
+		}
+		self::$auto_cache_conn = new ClusterRedis(self::$auto_cache_config_->host_list , self::$auto_cache_config_->cache_mode);
+	}
+	public static function DisableAutoCache() {
+	    self::$auto_cache_config_->enabled = false;
+	    self::$auto_cache_conn = null;
+	}
+	public static function DisableRetrieveResAutoCache() {
+	    self::$auto_cache_config_->cache_retrieve_result = false;
+	}
+	
+	public static function EnableRetrieveResAutoCache() {
+	    self::$auto_cache_config_->cache_retrieve_result = true;
+	}
+	
+	public static function SetResultListCacheTime($time) {
+	    if (is_numeric($time) && $time > 0) {
+	        self::$auto_cache_config_->retr_res_expire = $time;
+	    }
+	}
+	private function _gen_cache_id_($table_name , $main_id) {
+	    if (is_numeric($main_id)) {
+	        return "soarphp_autocache:".self::$auto_cache_config_->prefix.":".$table_name.":".$main_id;
+	    } else {
+	        return "soarphp_autocache:".self::$auto_cache_config_->prefix.":".$table_name.":sql:".$main_id;
+	    }
 	}
 	
 	public function clear_buffer() {
@@ -149,6 +245,14 @@ abstract class Model {
 // 		$log->setLog($query_str , "insert_log");
 		if ( $this->mysql->query(rtrim($query_str , ',')) ) {
 			$this->set($this->primary_key, $this->GetLastInsertID());
+			//Auto Cache if needed
+			if (self::$auto_cache_config_->enabled && self::$auto_cache_conn) {
+			    $key = $this->_gen_cache_id_($this->table, $this->get_key($this->primary_key));
+			    self::$auto_cache_conn->Set($key , json_encode($this->data_buffer_));
+			    if (self::$auto_cache_config_->expire != -1) {
+			        self::$auto_cache_conn->Expire($key, self::$auto_cache_config_->expire);
+			    }
+			}
 			return true;
 		} else {
 			return false;
@@ -191,10 +295,10 @@ abstract class Model {
 			} else {
 				if (!isset(self::$allow_operation[$value[0]]))
 					throw new Exception("operation:[".$value[0]."] not supported");
-				if ($value[0] == "+=" && !$this->is_typeof_field_number($key)) {
-					$query_str .= "`".$key."`=CONCAT(`".$key."`,'".$value[1]."'),";
-				} else {
+				if ($value[0] == "+=" && $this->is_typeof_field_number($key)) {
 					$query_str .= "`".$key."`=`".$key."`".self::$allow_operation[$value[0]]."'".$value[1]."',";
+				} else {
+				    $query_str .= "`".$key."`=CONCAT(`".$key."`,'".$value[1]."'),";
 				}
 			}
 		}
@@ -206,6 +310,38 @@ abstract class Model {
 		}
 // 		$this->data_buffer_ = array();
 		if ( $this->mysql->query( $query_str )) {
+		    //Auto Cache if needed
+		    if (self::$auto_cache_config_->enabled && self::$auto_cache_conn) {
+		        //first fetch all the affected ids
+		        $sql = "select `".$this->primary_key."` from `".$this->table."`";
+		        if ($cond_str !== false) {
+		            $sql .= $cond_str;
+		        }
+		        if ($this->mysql->query($sql)){
+		            $ids = $this->mysql->get_all();
+		            if (is_array($ids)) {
+		                foreach ($ids as $t) {
+		                    $cache_key = $this->_gen_cache_id_($this->table, $t[$this->primary_key]);
+		                    if (($buf = self::$auto_cache_conn->Get($cache_key)) != null) {
+		                        $val = json_decode($buf , true);
+		                        foreach ($this->data_buffer_ as $key=>$value) {
+		                            if (!is_array($value)) {
+		                                $val[$key] = $value;
+		                            } else {
+		                                if ($value[0] == "+=" && $this->is_typeof_field_number($key)) {
+		                                    isset($val[$key]) && ($val[$key] += $value);
+		                                } else {
+		                                   isset($val[$key]) && ($val[$key] .= $value);
+		                                }
+		                            }
+		                        }
+		                        self::$auto_cache_conn->Set($cache_key, json_encode($val));
+		                    }
+		                }//end foreach ($ids as $t)
+		            }//end if(is_array(ids))
+		        }//end if ($this->mysql->query($sql))
+		        $this->mysql->free();
+		    }
 			return true;
 		} else {
 			return false;
@@ -237,12 +373,40 @@ abstract class Model {
 // 		$log = new Log();
 // 		$log->setLog($query_str);
 //debug end
-		$this->data_buffer_ = array();
 		if ( $this->mysql->query( $query_str )) {
+		    //Auto Cache if needed
+		    if (self::$auto_cache_config_->enabled && self::$auto_cache_conn) {
+		        //first fetch all the affected ids
+		        $sql = "select `".$this->primary_key."` from `".$this->table."`";
+		        if ($cond_str !== false) {
+		            $sql .= $cond_str;
+		        }
+		        if ($this->mysql->query($sql)){
+		            $ids = $this->mysql->get_all();
+		            if (is_array($ids)) {
+		                foreach ($ids as $t) {
+		                    $cache_key = $this->_gen_cache_id_($this->table, $t[$this->primary_key]);
+		                    if (($buf = self::$auto_cache_conn->Get($cache_key)) != null) {
+		                        $val = json_decode($buf , true);
+		                        foreach ($this->data_buffer_ as $key=>$value) {
+		                            if ($method == "+") {
+		                                isset($val[$key]) && ($val[$key] += $value);
+		                            } else {
+		                                isset($val[$key]) && ($val[$key] -= $value);
+		                            }
+		                        }
+		                        self::$auto_cache_conn->Set($cache_key, json_encode($val));
+		                    }
+		                }//end foreach ($ids as $t)
+		            }//end if(is_array(ids))
+		        }//end if ($this->mysql->query($sql))
+		        $this->mysql->free();
+		    }
 			$res = true;
 		} else {
 			$res = false;
 		}
+		$this->data_buffer_ = array();
 		$this->UnlockItem($conditions);
 		return $res;
 	}
@@ -261,6 +425,7 @@ abstract class Model {
 			throw new Exception('error parameter `table` or `fields`');
 		}
 		if (is_array($column_value_array) && count($column_value_array) > 0) {
+		    $this->clear_buffer();
 			foreach ($column_value_array as $key=>$value) {
 				$this->set($key, $value);
 			}
@@ -282,6 +447,7 @@ abstract class Model {
 			throw new Exception('error parameter `table` or `fields`');
 		}
 		if (is_array($column_value_array) && count($column_value_array) > 0) {
+		    $this->clear_buffer();
 			foreach ($column_value_array as $key=>$value) {
 				$this->set($key, $value);
 			}
@@ -296,7 +462,7 @@ abstract class Model {
 	 * @throws Exception			如果子类配置的参数，如fields,table,primary_key出错时，或者希望获取的key在数据库中不存在时，会抛出异常
 	 * @return multitype:array		如果找到，则返回组装好的该行数据。否则返回空数组。
 	 */
-	public function GetOne ( $primary_id  , $columns = array()) {
+	public function GetOne ( $primary_id  , array $columns = array()) {
 		if (!isset($this->table) || !isset($this->fields) || !is_array($this->fields) || !isset($this->primary_key)) {
 			throw new Exception('error parameter `table` or `fields` or `primary_key`');
 		}
@@ -305,15 +471,41 @@ abstract class Model {
 		}
 		$primary_id = addslashes($primary_id);
 		$query_str = "SELECT ";
-		if (is_array($columns) && count($columns) > 0) {
-			foreach ($columns as $col) {
-				if (!isset($this->fields[$col]))
-					throw new Exception('key not found:'.$col);
-				$query_str .= "`".$col."`,";
-			}
-			$query_str = rtrim($query_str , ',');
+		$cache_key = $this->_gen_cache_id_($this->table, $primary_id);
+		if (self::$auto_cache_config_->enabled && self::$auto_cache_conn) {
+		    //Try to retrieve from cache first
+		    $res = self::$auto_cache_conn->Get($cache_key);
+		    if ($res) {
+		        if (self::$auto_cache_config_->expire != -1) {
+		            self::$auto_cache_conn->Expire($cache_key, self::$auto_cache_config_->expire);
+		        }
+		        $rtn = json_decode($res , true);
+		        if (count($columns) > 0) {
+		            $real_rtn = array();
+		            foreach($columns as $col) {
+		                if (!isset($rtn[$col])) {
+		                    //Cache invalid
+		                    goto recache;
+		                }
+		                $real_rtn[$col] = $rtn[$col];
+		            }
+		            $rtn = $real_rtn;
+		        }
+		        return $rtn;
+		    }
+		    recache:
+		    $query_str .= "*";
 		} else {
-			$query_str .= "*";
+    		if (is_array($columns) && count($columns) > 0) {
+    			foreach ($columns as $col) {
+    				if (!isset($this->fields[$col]))
+    					throw new Exception('key not found:'.$col);
+    				$query_str .= "`".$col."`,";
+    			}
+    			$query_str = rtrim($query_str , ',');
+    		} else {
+    			$query_str .= "*";
+    		}
 		}
 		$query_str .= " FROM `".$this->table."` WHERE `".$this->primary_key."`='".$primary_id."'";
 		$rtn = array();
@@ -328,6 +520,20 @@ abstract class Model {
 					$rtn[$key] = $value;
 			}
 			$this->_restore_single_buffer_($rtn);
+			if (self::$auto_cache_config_->enabled && self::$auto_cache_conn) {
+			    
+			    self::$auto_cache_conn->Set($cache_key , json_encode($this->data_buffer_));
+			    if (self::$auto_cache_config_->expire != -1) {
+			        self::$auto_cache_conn->Expire($cache_key, self::$auto_cache_config_->expire);
+			    }
+			    if (count($columns) > 0) {
+			        $real_rtn = array();
+			        foreach ($columns as $col) {
+			            $real_rtn[$col] = $rtn[$col];
+			        }
+			        $rtn = $real_rtn;
+			    }
+			}
 		}
 		$this->mysql->free();
 		$this->data_buffer_ = $rtn;
@@ -349,19 +555,29 @@ abstract class Model {
 		if (!isset($this->table) || !isset($this->fields) || !is_array($this->fields) || !isset($this->primary_key)) {
 			throw new Exception('error parameter `table` or `fields` or `primary_key`');
 		}
+		$cond_str = $this->_generate_condition_string($conditions);
 		$query_str = "SELECT ";
-		if (is_array($columns) && count($columns) > 0) {
-			foreach ($columns as $col) {
-				if (!isset($this->fields[$col]))
-					throw new Exception('key not found:'.$col);
-				$query_str .= "`".$col."`,";
-			}
-			$query_str = rtrim($query_str , ',');
+		if (self::$auto_cache_config_->enabled && self::$auto_cache_conn) {
+		    //Try to retrieve from cache first.
+		    if ($cond_str !== false && self::$auto_cache_config_->cache_retrieve_result) {
+		        $cond_str = str_replace(" ", "^", $cond_str);
+		        $cache_key = $this->_gen_cache_id_($this->table, $cond_str);
+		    }
+		    $query_str .= "*";
 		} else {
-			$query_str .= "*";
+		    if (is_array($columns) && count($columns) > 0) {
+		        foreach ($columns as $col) {
+		            if (!isset($this->fields[$col]))
+		                throw new Exception('key not found:'.$col);
+		            $query_str .= "`".$col."`,";
+		        }
+		        $query_str = rtrim($query_str , ',');
+		    } else {
+		        $query_str .= "*";
+		    }
 		}
 		$query_str .= " FROM `".$this->table."`";
-		$cond_str = $this->_generate_condition_string($conditions);
+		
 		if ($cond_str !== false) {
 			$query_str .= $cond_str;
 		}
@@ -542,9 +758,19 @@ abstract class Model {
 			$have_cond = true;
 		} elseif (count($conditions) > 0) {
 			$cond_str = " WHERE ";
+			foreach($conditions as $key => $value) {
+			    if (!is_array($value) || count($value) != 3)
+			        unset($conditions[$key]);
+			}
+			uasort($conditions, function ($a , $b) {
+			    $l = strtolower($a[0]);
+			    $r = strtolower($b[0]);
+			    if ($l == $r ) {
+			        return 0;
+			    }
+			    return (strcmp($l, $r) < 0)?-1:1;
+			});
 			foreach($conditions as $value) {
-				if (!is_array($value) || count($value) != 3)
-					continue;
 				if ( !isset($this->fields[$value[0]]) )
 					throw new Exception("error: no key call `".$value[0]."` in table `".$this->table."`");
 				if ( !isset( self::$default_operation[ $value[1] ] ) )
@@ -601,4 +827,5 @@ abstract class Model {
 	    }
 	}
 }
+
 
