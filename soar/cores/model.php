@@ -98,6 +98,20 @@ abstract class Model {
 	private $data_buffer_;///<用来存放数据缓存，在update 或者 insert的时候系统自动优先在此读取数据,GetOne时数据会临时存放于此
 	protected $need_auto_update;
 	
+	public static function init() {
+	    //initialize auto cache configuration if needed
+	    if (self::$auto_cache_conn) {
+	        //if successfully created the auto cache connection, quit the constructor directly.
+	        return;
+	    }
+	    $config = SoarConfig::get('main.auto_cache');
+	    self::$auto_cache_config_ = new AutoCacheConfig($config);
+	    if (!self::$auto_cache_config_->enabled) {
+	        return;
+	    }
+	    self::$auto_cache_conn = new ClusterRedis(self::$auto_cache_config_->host_list , self::$auto_cache_config_->cache_mode);
+	}
+	
 	/**
 	 * 默认Model的构造函数
 	 * 在每个Model实例化的时候自动为其创建一个mysql实例，数据库配置参数由config文件夹下的main.conf.php中的db元素所指定
@@ -111,17 +125,6 @@ abstract class Model {
 		$this->mysql = new MySQL($config);
 		$this->need_auto_update = false;
 		
-		//initialize auto cache configuration if needed
-		if (self::$auto_cache_conn) {
-		    //if successfully created the auto cache connection, quit the constructor directly.
-		    return;
-		}
-		$config = SoarConfig::get('main.auto_cache');
-		self::$auto_cache_config_ = new AutoCacheConfig($config);
-		if (!self::$auto_cache_config_->enabled) {
-		    return;
-		}
-		self::$auto_cache_conn = new ClusterRedis(self::$auto_cache_config_->host_list , self::$auto_cache_config_->cache_mode);
 	}
 	public static function DisableAutoCache() {
 	    self::$auto_cache_config_->enabled = false;
@@ -144,6 +147,7 @@ abstract class Model {
 	    if (is_numeric($main_id)) {
 	        return "soarphp_autocache:".self::$auto_cache_config_->prefix.":".$table_name.":".$main_id;
 	    } else {
+	        $main_id = md5(str_replace(" ", "^", $main_id));
 	        return "soarphp_autocache:".self::$auto_cache_config_->prefix.":".$table_name.":sql:".$main_id;
 	    }
 	}
@@ -238,6 +242,7 @@ abstract class Model {
 			} else {
 				if (!isset(self::$default_value[$type]))
 					throw new Exception("unrecognized type :".$type);
+				$this->data_buffer_[$key] = self::$default_value[$type];
 				$query_str .= "`".$key."`='".self::$default_value[$type]."',";
 			}
 		}
@@ -485,6 +490,8 @@ abstract class Model {
 		            goto recache;
 		        }
 		        $this->_restore_single_buffer_($rtn);
+		        $this->data_buffer_ = $rtn;
+		        echo "Single Get From Cache\n";
 		        return $rtn;
 		    }
 		    recache:
@@ -515,7 +522,7 @@ abstract class Model {
 			}
 			if (self::$auto_cache_config_->enabled && self::$auto_cache_conn) {
 			    
-			    self::$auto_cache_conn->Set($cache_key , json_encode($this->data_buffer_));
+			    self::$auto_cache_conn->Set($cache_key , json_encode($rtn));
 			    if (self::$auto_cache_config_->expire != -1) {
 			        self::$auto_cache_conn->Expire($cache_key, self::$auto_cache_config_->expire);
 			    }
@@ -526,6 +533,7 @@ abstract class Model {
 		$this->mysql->free();
 		$this->data_buffer_ = $rtn;
 		$this->set($this->primary_key, $primary_id);
+		echo "Single Get From DB\n";
 		return $rtn;
 	}
 	
@@ -540,6 +548,71 @@ abstract class Model {
 	        $rtn[$c] = $src[$c];
 	    }
 	    return $rtn;
+	}
+	
+	/*******__cmp functions*******/
+	private function __cmp_eq($a , $b) {
+	    return $a == $b;
+	}
+	private function __cmp_neq($a , $b) {
+	    return $a != $b;
+	}
+	private function __cmp_lt($a , $b) {
+	    return $a < $b;
+	}
+	private function __cmp_gt($a , $b) {
+	    return $a > $b;
+	}
+	private function __cmp_ge($a , $b) {
+	    return $a >= $b;
+	}
+	private function __cmp_le($a , $b) {
+	    return $a <= $b;
+	}
+	private function __cmp_match($a , $b) {
+	    return !(strpos($b, $a) === false);
+	}
+	private function __cmp_lmatch($a , $b) {
+	    return $a == "" || strpos($b, $a)===0;
+	}
+	private function __cmp_rmatch($a , $b) {
+	    $length = strlen($a);
+	    if ($length == 0) {
+	        return true;
+	    }
+	    return (substr($b, -$length) === $a);
+	}
+	private function __cmp_inarray($a , array $b) {
+	    return !(array_search($a, $b) === false);
+	}
+	/*******__cmp functions end*******/
+	private function test_condition($cached_v , $operator , $cond_v) {
+	    /*
+	     cached: 5
+	     cond v <= 6
+	     
+	     cached: 5
+	     cond v in [5 , 4 , 3]
+	     
+	     cached: abc
+	     cond v rmatch aoeabc
+	     */
+	    $op_map = [
+	    '=' => '__cmp_eq',
+	    '!=' => '__cmp_neq',
+	    '<' => '__cmp_lt',
+	    '>' => '__cmp_gt',
+	    '>=' => '__cmp_ge',
+	    '<=' => '__cmp_le',
+	    'match' => '__cmp_match',///<全匹配
+	    'lmatch' => '__cmp_lmatch',///<左匹配
+	    'rmatch' => '__cmp_rmatch',///<右匹配
+	    'in' => '__cmp_inarray',
+	    ];
+	    if (!isset($op_map[$operator])) {
+	        throw new Exception("operator not supported");
+	    }
+	    return $this->{$op_map[$operator]}($cached_v , $cond_v);
 	}
 	
 	/**
@@ -561,13 +634,13 @@ abstract class Model {
 		if (self::$auto_cache_config_->enabled && self::$auto_cache_conn) {
 		    //Try to retrieve from cache first.
 		    if ($cond_str !== false && self::$auto_cache_config_->cache_retrieve_result) {
-		        $tmp_cond_str = str_replace(" ", "^", $cond_str);
-		        $cache_key = $this->_gen_cache_id_($this->table, $tmp_cond_str);
-		        $id_list = self::$auto_cache_conn->Get($cache_key);
-		        if (!$id_list) {
+		        $cache_key = $this->_gen_cache_id_($this->table, $cond_str);
+		        $search_idx = self::$auto_cache_conn->Get($cache_key);
+		        if (!$search_idx) {
 		            goto recache;
 		        }
-		        $id_list = explode(',', $id_list);
+		        $search_idx = json_decode($search_idx , true);
+		        $id_list = explode(',', $search_idx["ids"]);
 		        $rtn = [];
 		        foreach($id_list as $id) {
 		            $item_key = $this->_gen_cache_id_($this->table, $id);
@@ -576,14 +649,29 @@ abstract class Model {
 		                //cache no longer available
 		                goto recache;
 		            }
-		            $tmp = $this->filter_row(json_decode($tmp , true) , $columns);
+		            $tmp = json_decode($tmp , true);
+		            foreach ($search_idx["conds"] as $cond) {
+		                if (count($cond) != 3 || !isset($tmp[$cond[0]])) {
+		                    goto recache;
+		                }
+		                if (!$this->test_condition($tmp[$cond[0]] , $cond[1] , $cond[2])) {
+		                    if (!is_array($cond[2]))
+		                        echo "condition isn't satisfied:".$tmp[$cond[0]].$cond[1].$cond[2]."\n";
+		                    else
+		                        echo "condition isn't satisfied:".$tmp[$cond[0]].$cond[1].json_encode($cond[2])."\n";
+		                    goto recache;
+		                }
+		            }
+		            $tmp = $this->filter_row($tmp , $columns);
 		            if ($tmp == -1) {
 		                //cache invalid
 		                goto recache;
 		            }
+		            
 		            $this->_restore_single_buffer_($tmp);
 		            $rtn[] = $tmp;
 		        }
+		        echo "Multi Get From Cache\n";
 		        return $rtn;
 		    }
 		    recache:
@@ -638,14 +726,14 @@ abstract class Model {
 				$this->_restore_single_buffer_($rtn[$i]);
 			}
 			if (self::$auto_cache_config_->enabled && self::$auto_cache_conn && self::$auto_cache_config_->cache_retrieve_result && $cond_str !== false) {
-			    $tmp_cond_str = str_replace(" ", "^", $cond_str);
-			    $ckey = $this->_gen_cache_id_($this->table, $tmp_cond_str);
-			    self::$auto_cache_conn->Set($ckey, join(',', $id_list));
+			    $ckey = $this->_gen_cache_id_($this->table, $cond_str);
+			    self::$auto_cache_conn->Set($ckey, json_encode(['ids'=>join(',', $id_list),'conds'=> $conditions]));
 			    self::$auto_cache_conn->Expire($ckey, self::$auto_cache_config_->retr_res_expire);
 			}
 		}
 		$this->mysql->free();
 		$this->clear_buffer();
+		echo "Multi Get From DB\n";
 		return $rtn;
 	}
 	
@@ -708,10 +796,15 @@ abstract class Model {
 		$this->clear_buffer();
 		$primary_id = addslashes($primary_id);
 		$query_str = "DELETE FROM `".$this->table."` WHERE `".$this->primary_key."`='".$primary_id."'";
-		if ( $this->mysql->query( $query_str ))
+		if ( $this->mysql->query( $query_str )) {
+		    if(self::$auto_cache_config_->enabled && self::$auto_cache_conn) {
+		        //Delete Cache
+		        self::$auto_cache_conn->Del($this->_gen_cache_id_($this->table, $primary_id));
+		    }
 			return true;
-		else
+		} else {
 			return false;
+		}
 	}
 	
 	/**
@@ -735,10 +828,25 @@ abstract class Model {
 			return false;
 		}
 		$query_str .= $cond_str;
-		if ($this->mysql->query($query_str))
+		if(self::$auto_cache_config_->enabled && self::$auto_cache_conn) {
+		    $sql = "select `".$this->primary_key."` from `".$this->table."`".$cond_str;
+		    if ($this->mysql->query($sql)){
+		        $ids = $this->mysql->get_all();
+		        if (is_array($ids)) {
+		            foreach ($ids as $t) {
+		                self::$auto_cache_conn->Del($this->_gen_cache_id_($this->table, $t[$this->primary_key]));
+		            }//end foreach ($ids as $t)
+		        }//end if(is_array(ids))
+		    }//end if ($this->mysql->query($sql))
+		    $this->mysql->free();
+		    if (self::$auto_cache_config_->cache_retrieve_result)
+		        self::$auto_cache_conn->Del($this->_gen_cache_id_($this->table,$cond_str));
+		}
+		if ($this->mysql->query($query_str)) {
 			return true;
-		else
+		} else {
 			return false;
+		}
 	}
 	//Note:不要在同一个会话中嵌套使用多把锁，否则下一次加锁会隐式释放上一次的锁，导致数据冲突，或有可能导致无法多表查询。
 	//将来在优化框架设计时可以重构这块以提供更强大的异步的数据安全支持
@@ -801,8 +909,10 @@ abstract class Model {
 		} elseif (count($conditions) > 0) {
 			$cond_str = " WHERE ";
 			foreach($conditions as $key => $value) {
-			    if (!is_array($value) || count($value) != 3)
-			        unset($conditions[$key]);
+			    if (!is_array($value) || count($value) != 3) {
+			        throw new Exception("condition format incorrect:".$key."=>".json_encode($value));
+// 			        unset($conditions[$key]);
+			    }
 			}
 			uasort($conditions, function ($a , $b) {
 			    $l = strtolower($a[0]);
@@ -869,5 +979,5 @@ abstract class Model {
 	    }
 	}
 }
-
+Model::init();
 

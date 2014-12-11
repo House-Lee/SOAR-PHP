@@ -20,3 +20,8 @@ $CONF['db'] = array(
 
 $CONF['RC4'] = "FNA#l1C0-L^wvG.b";
 
+$CONF['auto_cache'] = array(
+                'host_list' => ['house-madmuc-server01.usask.ca:17016'],
+                'expire' => 1800,
+                'prefix' => 'testproj'
+                );
