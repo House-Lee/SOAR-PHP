@@ -120,6 +120,10 @@ class SoarLoader {
     }
     
     public function ModelLoader( $modelName ) {
+        if ($modelName == "Model") {
+            require_once 'model.php';
+            return true;
+        }
         if (substr($modelName, -3) != "Dao") {
             return false;
         }
