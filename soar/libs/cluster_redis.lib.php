@@ -62,6 +62,9 @@ class ClusterRedis {
     public function Set($key , $value) {
         return $this->conn->set($key , $value);
     }
+    public function SetEx($key , $value , $expire) {
+        return $this->conn->setex($key , $expire , $value);
+    }
     public function Del($key) {
         return $this->conn->del($key);
     }

@@ -254,9 +254,10 @@ abstract class Model {
 			//Auto Cache if needed
 			if (self::$auto_cache_config_->enabled && self::$auto_cache_conn) {
 			    $key = $this->_gen_cache_id_($this->table, $this->get_key($this->primary_key));
-			    self::$auto_cache_conn->Set($key , json_encode($this->data_buffer_));
 			    if (self::$auto_cache_config_->expire != -1) {
-			        self::$auto_cache_conn->Expire($key, self::$auto_cache_config_->expire);
+			        self::$auto_cache_conn->SetEx($key , json_encode($this->data_buffer_) , self::$auto_cache_config_->expire);
+			    } else {
+			        self::$auto_cache_conn->Set($key , json_encode($this->data_buffer_));
 			    }
 			}
 			return true;
@@ -341,7 +342,11 @@ abstract class Model {
 		                                }
 		                            }
 		                        }
-		                        self::$auto_cache_conn->Set($cache_key, json_encode($val));
+		                        if (self::$auto_cache_config_->expire != -1) {
+		                            self::$auto_cache_conn->SetEx($cache_key, json_encode($val) , self::$auto_cache_config_->expire);
+		                        } else {
+		                            self::$auto_cache_conn->Set($cache_key, json_encode($val));
+		                        }
 		                    }
 		                }//end foreach ($ids as $t)
 		            }//end if(is_array(ids))
@@ -401,7 +406,11 @@ abstract class Model {
 		                                isset($val[$key]) && ($val[$key] -= $value);
 		                            }
 		                        }
-		                        self::$auto_cache_conn->Set($cache_key, json_encode($val));
+		                        if (self::$auto_cache_config_->expire != -1) {
+		                            self::$auto_cache_conn->SetEx($cache_key, json_encode($val) , self::$auto_cache_config_->expire);
+		                        } else {
+		                            self::$auto_cache_conn->Set($cache_key, json_encode($val));
+		                        }
 		                    }
 		                }//end foreach ($ids as $t)
 		            }//end if(is_array(ids))
@@ -510,7 +519,8 @@ abstract class Model {
 		}
 		$query_str .= " FROM `".$this->table."` WHERE `".$this->primary_key."`='".$primary_id."'";
 		$rtn = array();
-		if( ($res = $this->mysql->query($query_str)) ) {
+		$res = $this->mysql->query($query_str);
+		if( ($res) ) {
 			$res_arr = $this->mysql->fetch_array();
 			if (!is_array($res_arr)) {
 				$this->mysql->free();
@@ -521,10 +531,10 @@ abstract class Model {
 					$rtn[$key] = $value;
 			}
 			if (self::$auto_cache_config_->enabled && self::$auto_cache_conn) {
-			    
-			    self::$auto_cache_conn->Set($cache_key , json_encode($rtn));
 			    if (self::$auto_cache_config_->expire != -1) {
-			        self::$auto_cache_conn->Expire($cache_key, self::$auto_cache_config_->expire);
+			        self::$auto_cache_conn->SetEx($cache_key , json_encode($rtn) , self::$auto_cache_config_->expire);
+			    } else {
+			        self::$auto_cache_conn->Set($cache_key , json_encode($rtn));
 			    }
 			    $rtn = $this->filter_row($rtn, $columns);
 			}
@@ -655,10 +665,10 @@ abstract class Model {
 		                    goto recache;
 		                }
 		                if (!$this->test_condition($tmp[$cond[0]] , $cond[1] , $cond[2])) {
-		                    if (!is_array($cond[2]))
-		                        echo "condition isn't satisfied:".$tmp[$cond[0]].$cond[1].$cond[2]."\n";
-		                    else
-		                        echo "condition isn't satisfied:".$tmp[$cond[0]].$cond[1].json_encode($cond[2])."\n";
+// 		                    if (!is_array($cond[2]))
+// 		                        echo "condition isn't satisfied:".$tmp[$cond[0]].$cond[1].$cond[2]."\n";
+// 		                    else
+// 		                        echo "condition isn't satisfied:".$tmp[$cond[0]].$cond[1].json_encode($cond[2])."\n";
 		                    goto recache;
 		                }
 		            }
@@ -717,9 +727,10 @@ abstract class Model {
 				if (self::$auto_cache_config_->enabled && self::$auto_cache_conn) {
 				    $id_list[] = $res_arr[$i][$this->primary_key];
 				    $ckey = $this->_gen_cache_id_($this->table, $res_arr[$i][$this->primary_key]);
-				    self::$auto_cache_conn->Set($ckey, json_encode($rtn[$i]));
 				    if (self::$auto_cache_config_->expire != -1) {
-				        self::$auto_cache_conn->Expire($ckey, self::$auto_cache_config_->expire);
+				        self::$auto_cache_conn->SetEx($ckey, json_encode($rtn[$i]) , self::$auto_cache_config_->expire);
+				    } else {
+				        self::$auto_cache_conn->Set($ckey, json_encode($rtn[$i]));
 				    }
 				}
 				$rtn[$i] = $this->filter_row($rtn[$i], $columns);
@@ -727,8 +738,7 @@ abstract class Model {
 			}
 			if (self::$auto_cache_config_->enabled && self::$auto_cache_conn && self::$auto_cache_config_->cache_retrieve_result && $cond_str !== false) {
 			    $ckey = $this->_gen_cache_id_($this->table, $cond_str);
-			    self::$auto_cache_conn->Set($ckey, json_encode(['ids'=>join(',', $id_list),'conds'=> $conditions]));
-			    self::$auto_cache_conn->Expire($ckey, self::$auto_cache_config_->retr_res_expire);
+			    self::$auto_cache_conn->SetEx($ckey, json_encode(['ids'=>join(',', $id_list),'conds'=> $conditions]) ,  self::$auto_cache_config_->retr_res_expire);
 			}
 		}
 		$this->mysql->free();
