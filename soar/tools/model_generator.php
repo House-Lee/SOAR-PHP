@@ -4,15 +4,17 @@ error_reporting(7);
 define('ROOT_PATH',dirname(dirname(dirname(__FILE__))));
 define('MODEL_PATH' , ROOT_PATH."/soar/models/");
 $mysql_conf = array(
-				'db_host' => 'localhost',
-                'db_database' => 'soar_sample',
-                'db_user' => 'Default_User',
-                'db_pwd' => 'Default_Password',
+				'db_host' => '128.233.173.31:3306',
+                'db_database' => 'soarnix_miantuaner',
+                'db_user' => 'soarnix_server',
+                'db_pwd' => 'njDhhyVbnzMvbK4Y',
                 'charset' => 'utf8',
                 'tablePrefix' => '',
 				);
 $type_map = array(
+		'bigint' => 'int',
 		'int' => 'int',
+		'tinyint'=> 'int',
 		'varchar' => 'string',
 		'text' => 'string'
 		);
