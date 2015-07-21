@@ -4,10 +4,10 @@ error_reporting(7);
 define('ROOT_PATH',dirname(dirname(dirname(__FILE__))));
 define('MODEL_PATH' , ROOT_PATH."/soar/models/");
 $mysql_conf = array(
-				'db_host' => '128.233.173.31:3306',
-                'db_database' => 'soarnix_miantuaner',
-                'db_user' => 'soarnix_server',
-                'db_pwd' => 'njDhhyVbnzMvbK4Y',
+				'db_host' => 'DEFAULT_HOST:DEFAULT_PORT',
+                'db_database' => 'DEFAULT_DB',
+                'db_user' => 'DEFAULT_USER',
+                'db_pwd' => 'DEFAULT_PASSWORD',
                 'charset' => 'utf8',
                 'tablePrefix' => '',
 				);
