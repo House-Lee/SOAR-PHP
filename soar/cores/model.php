@@ -539,12 +539,13 @@ abstract class Model {
 			    $rtn = $this->filter_row($rtn, $columns);
 			}
 			$this->_restore_single_buffer_($rtn);
+			$this->data_buffer_ = $rtn;
+			$this->set($this->primary_key, $primary_id);
+			$this->mysql->free();
+			//echo "Single Get From DB\n";
+			return $rtn;
 		}
-		$this->mysql->free();
-		$this->data_buffer_ = $rtn;
-		$this->set($this->primary_key, $primary_id);
-		echo "Single Get From DB\n";
-		return $rtn;
+		return null;
 	}
 	
 	private function filter_row($src , array $cols) {
